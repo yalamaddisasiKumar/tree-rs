@@ -78,63 +78,56 @@ impl DirectoryEntry {
 
 }
 
-struct DirectoryTreeIterator<'a > {
+struct DirectoryTreeIterator<'a> {
     first_time: bool,
-    dir : DirectoryEntry,
-    stack: Box<std::iter::Flatten<std::vec::IntoIter<DirectoryTreeIterator<'a>>>>,
+    dir: DirectoryEntry,
+    stack: Box<dyn Iterator<Item = DirectoryEntry> + 'a>,
     config: &'a Config,
 }
 
 impl<'a> DirectoryTreeIterator<'a> {
     fn new(root: DirectoryEntry, config: &'a Config) -> Self {
-         DirectoryTreeIterator {
+        DirectoryTreeIterator {
             first_time: true,
             dir: root,
-            stack: Box::new(Vec::new().into_iter().flatten()),
+            stack: Box::new(std::iter::empty()),
             config,
         }
     }
 
     fn set_stack_iterators(&mut self) {
         if self.dir.is_dir && (self.config.args.level.is_none() || self.dir.level < self.config.args.level.unwrap()) {
-           if let Ok(y) = fs::read_dir(&self.dir.name) {
+            if let Ok(y) = fs::read_dir(&self.dir.name) {
+                let config = self.config;
+                let level = self.dir.level;
                 let x = y.filter_map(|res| res.ok())
-                    .filter(|d| self.config.args.all || !d.file_name().to_string_lossy().starts_with('.'))
-                    .filter(|d| !self.config.args.directories || d.file_type().unwrap().is_dir())
-                    .filter_map(|dir_entry|{
-                        
+                    .filter(move |d| config.args.all || !d.file_name().to_string_lossy().starts_with('.'))
+                    .filter(move |d| !config.args.directories || d.file_type().unwrap().is_dir())
+                    .filter_map(move |dir_entry| {
+                        let is_dir = dir_entry.file_type().unwrap().is_dir();
                         let de = DirectoryEntry {
                             name: dir_entry.path(),
-                            level: self.dir.level + 1,
-                            is_dir: dir_entry.file_type().unwrap().is_dir(),
+                            level: level + 1,
+                            is_dir,
                         };
-                    
-                        if !de.is_dir && let Some(pattern) = &self.config.pattern_regex {
-                            let m = pattern.matches(&dir_entry.file_name().to_string_lossy() );
-                            if !m {
+
+                        if !de.is_dir && let Some(pattern) = &config.pattern_regex {
+                            if !pattern.matches(&dir_entry.file_name().to_string_lossy()) {
                                 return None;
                             }
                         }
 
-                        if let Some(pattern) = &self.config.exclude_pattern_regex {
-                            let m = pattern.matches(&dir_entry.file_name().to_string_lossy() );
-                            if m {
+                        if let Some(pattern) = &config.exclude_pattern_regex {
+                            if pattern.matches(&dir_entry.file_name().to_string_lossy()) {
                                 return None;
                             }
                         }
 
-                        let dir_itr = DirectoryTreeIterator 
-                            ::new( 
-                                de,
-                                self.config
-                            );
-                        Some(dir_itr)
+                        Some(DirectoryTreeIterator::new(de, config))
                     })
-                    .collect::<Vec<DirectoryTreeIterator>>()
-                    .into_iter()
                     .flatten();
                 self.stack = Box::new(x);
-           }
+            }
         }
     }
 }
