@@ -1,5 +1,6 @@
 use clap::Parser;
 use std::fs;
+use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 use glob::Pattern;
 
@@ -60,19 +61,18 @@ impl DirectoryEntry {
         }
     }
 
-    fn display_tree(&self, full_path: bool) {
+    fn display_tree(&self, full_path: bool, out: &mut impl Write) {
         for _ in 1..self.level {
-            print!("│   ");
+            write!(out, "│   ").unwrap();
         }
         if self.level > 0 {
-            // print!("+--- ");
-            print!("├── ");
+            write!(out, "├── ").unwrap();
         }
         // "└── " for the last entry in a directory, but we don't have that information here
         if full_path {
-            println!("{}", self.name.to_string_lossy());
-        } else {    
-            println!("{}", self.name.file_name().unwrap().to_string_lossy());
+            writeln!(out, "{}", self.name.to_string_lossy()).unwrap();
+        } else {
+            writeln!(out, "{}", self.name.file_name().unwrap().to_string_lossy()).unwrap();
         }
     }
 
@@ -163,10 +163,12 @@ fn main() {
         DirectoryEntry::new(&path_buf, Some(0), true),
         &config
     );
+    let stdout = io::stdout();
+    let mut out = BufWriter::new(stdout.lock());
     let mut d = -1;
     let mut f = 0;
     for entry in dir_iterator {
-        entry.display_tree(full_path);
+        entry.display_tree(full_path, &mut out);
         if entry.is_dir {
             d += 1;
         } else {
@@ -174,6 +176,6 @@ fn main() {
         }
     }
 
-    print!("\n{} directories, {} files\n", d, f);
+    writeln!(out, "\n{} directories, {} files", d, f).unwrap();
 
 }
