@@ -102,9 +102,11 @@ impl<'a> DirectoryTreeIterator<'a> {
                 let level = self.dir.level;
                 let x = y.filter_map(|res| res.ok())
                     .filter(move |d| config.args.all || !d.file_name().to_string_lossy().starts_with('.'))
-                    .filter(move |d| !config.args.directories || d.file_type().unwrap().is_dir())
                     .filter_map(move |dir_entry| {
-                        let is_dir = dir_entry.file_type().unwrap().is_dir();
+                        let is_dir = dir_entry.file_type().ok()?.is_dir();
+                        if config.args.directories && !is_dir {
+                            return None;
+                        }
                         let de = DirectoryEntry {
                             name: dir_entry.path(),
                             level: level + 1,
